@@ -843,7 +843,11 @@ final class input_matrix_test extends qtype_stack_testcase {
             '<div class="matrixsquarebrackets" data-stack-input-role="columnvector">',
             $html
         );
-        $this->assertStringContainsString('data-stack-input-role="columnvector"', $html);
+        $this->assertStringContainsString(
+            'data-stack-input-type="matrix" data-stack-input-role="columnvector"',
+            $html
+        );
+        $this->assertEquals('columnvector', $el->render_api_data('c(1,2)')['semanticRole']);
     }
 
     public function test_validate_columnvector_student_response(): void {
