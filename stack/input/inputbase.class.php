@@ -269,6 +269,12 @@ abstract class stack_input {
                     }
                     break;
 
+                case 'columnvector':
+                    if (!(is_bool($arg))) {
+                        $this->errors[] = stack_string('numericalinputoptboolerr', ['opt' => $option, 'val' => $arg]);
+                    }
+                    break;
+
                 case 'novars':
                     if (!(is_bool($arg))) {
                         $this->errors[] = stack_string('numericalinputoptboolerr', ['opt' => $option, 'val' => $arg]);

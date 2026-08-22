@@ -18,6 +18,11 @@ Once converted into matrices, the student's answer will be evaluated by PRTs as 
 * `vec_convertedp(ex)` A predicate function that checks whether `c` or `r` is present. This is useful in a PRT to ensure that an earlier conversion was successful (i.e. everything conforms) before continuing.
 * `un_vec_convert(ex)` Given a row or column vector, convert it to `c()` or `r()` form.
 
+For a fixed column of individual input boxes, use a matrix input with the extra option `columnvector` and
+a `c(...)` model answer. The grid then produces a semantic `c(...)` response, which can be passed to
+`vec_convert` in a potential response tree. Without this option, every fixed matrix grid produces a
+`matrix(...)`, including grids with only one column.
+
 ## Vectors as single entities
 
 It is very useful to treat vectors as a single entity.  The vector `stackvector(a)` and the atom `a` are different, and are not considered algebraically equivalent.  While students may type in `stackvector(a)` as an answer, they are likely to type in `a`.  The teacher can either (1) add in `stackvector` ephemeral forms to the student's answer in the feedback variables using `texboldatoms` or (2) remove all `stackvector` forms from the teacher's answer by using the `destackvector(ex)` function on their answer.  In the future we may have an option in the input to apply texboldatoms to student's expressions.
@@ -66,7 +71,6 @@ If you turn the option "Multiplication sign" to none, this should display as
 Notice the use of the function `ordergreat`.  `ordergreat` can only be used once at the beginning of the question.
 
 If you use the special constant `%_stack_preamble_end;` then anything before this constant will be available everywhere in the question, including the inputs.
-
 
 
 

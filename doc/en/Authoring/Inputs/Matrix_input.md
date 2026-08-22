@@ -18,6 +18,23 @@ We cannot use the `EMPTYANSWER` tag for the teacher's answer with the matrix inp
 
 The shape of the parentheses surrounding the brackets is taken from the question level options, except matrix inputs cannot display curly brackets `{`.  (If you can create CSS to do this, please contact the developers!)
 
+### Column-vector grid
+
+The extra option `columnvector` keeps the fixed grid but represents the student's response as STACK's
+semantic `c(...)` column-vector expression instead of a one-column `matrix(...)`. Use a `c(...)` model
+answer, for example
+
+    v: c(1, 2, 3);
+
+and put `columnvector` in the input's extra-options field. Include
+`stack_linear_algebra_declare(true)` in the question variables to display `c(...)` expressions as column
+vectors. In potential response trees, use `vec_convert(ans1)` when a matrix is required for calculations
+or comparison with a matrix model answer.
+
+The rendered grid has `data-stack-input-role="columnvector"`, allowing themes or question CSS to give
+column-vector inputs a distinct bracket style without identifying them from their dimensions. The
+question-level matrix-parentheses option remains the default visual style.
+
 ## Matrix of variable size input ###
 
 The matrix of variable size input is a textarea into which students type in their answer.

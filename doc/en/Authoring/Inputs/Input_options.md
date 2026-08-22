@@ -35,6 +35,7 @@ min/max sf/dp     |  .  |  Y  |  Y    |   .    |   .    |   .   |   .   |   .  |
 `validator`    |  Y  |  Y  |  Y    |   Y    |   Y    |   .   |   .   |   .  |  .  |    .     |   .   |   Y    |   .   |   Y
 `feedback`     |  Y  |  .  |  Y    |   Y    |   Y    |   .   |   .   |   .  |  .  |    .     |   .   |   .    |   .   |   .
 `monospace`    |  Y  |  Y  |  Y    |   .    |   Y    |   .   |   .   |   .  |  .  |    Y     |   Y   |   .    |   .   |   Y
+`columnvector` |  .  |  .  |  .    |   Y    |   .    |   .   |   .   |   .  |  .  |    .     |   .   |   .    |   .   |   .
 `manualgraded` |  Y  |  Y  |  Y    |   Y    |   Y    |   .   |   .   |   .  |  .  |    Y     |   Y   |   Y    |   Y   |   Y
 
 For documentation about the various options not documented on this page look at the pages for the specific inputs in which each option is used.

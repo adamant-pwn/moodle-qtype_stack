@@ -809,4 +809,114 @@ final class input_matrix_test extends qtype_stack_testcase {
             $state->contentsdisplayed
         );
     }
+
+    public function test_columnvector_uses_semantic_c_expression(): void {
+
+        $options = new stack_options();
+        $el = stack_input_factory::make('matrix', 'ans1', 'v', $options);
+        $el->set_parameter('options', 'columnvector');
+        $el->adapt_to_model_answer('c(1,2,3)');
+
+        $this->assertEquals('c(1,2,3)', $el->contents_to_maxima([['1'], ['2'], ['3']]));
+        $this->assertEquals([
+            'ans1_sub_0_0' => '1',
+            'ans1_sub_1_0' => '2',
+            'ans1_sub_2_0' => '3',
+            'ans1_val' => 'c(1,2,3)',
+        ], $el->maxima_to_response_array('c(1,2,3)'));
+    }
+
+    public function test_columnvector_render_exposes_semantic_role(): void {
+
+        $options = new stack_options();
+        $el = stack_input_factory::make('matrix', 'ans1', 'v', $options);
+        $el->set_parameter('options', 'columnvector');
+        $el->adapt_to_model_answer('c(1,2)');
+
+        $html = $el->render(
+            new stack_input_state(stack_input::BLANK, [], '', '', '', '', ''),
+            'ans1',
+            false,
+            null
+        );
+        $this->assertStringContainsString(
+            '<div class="matrixsquarebrackets" data-stack-input-role="columnvector">',
+            $html
+        );
+        $this->assertStringContainsString('data-stack-input-role="columnvector"', $html);
+    }
+
+    public function test_validate_columnvector_student_response(): void {
+
+        $options = new stack_options();
+        $el = stack_input_factory::make('matrix', 'ans1', 'v', $options);
+        $el->set_parameter('options', 'columnvector');
+        $el->adapt_to_model_answer('c(1,2,3)');
+        $inputvals = [
+            'ans1_sub_0_0' => '1',
+            'ans1_sub_1_0' => '2',
+            'ans1_sub_2_0' => '3',
+        ];
+
+        $state = $el->validate_student_response(
+            $inputvals,
+            $options,
+            'c(1,2,3)',
+            new stack_cas_security()
+        );
+        $this->assertEquals(stack_input::VALID, $state->status);
+        $this->assertEquals('c(1,2,3)', $state->contentsmodified);
+        $this->assertEquals('', $state->errors);
+    }
+
+    public function test_columnvector_rejects_model_answer_with_multiple_columns(): void {
+
+        $options = new stack_options();
+        $el = stack_input_factory::make('matrix', 'ans1', 'v', $options);
+        $el->set_parameter('options', 'columnvector');
+        $el->adapt_to_model_answer('matrix([1,2],[3,4])');
+
+        $html = $el->render(
+            new stack_input_state(stack_input::BLANK, [], '', '', '', '', ''),
+            'ans1',
+            false,
+            null
+        );
+        $this->assertStringContainsString(
+            'The columnvector option requires a model answer with exactly one column.',
+            $html
+        );
+    }
+
+    public function test_validate_columnvector_ignores_only_generated_forbidden_c(): void {
+
+        $options = new stack_options();
+        $el = stack_input_factory::make('matrix', 'ans1', 'v', $options);
+        $el->set_parameter('options', 'columnvector');
+        $el->set_parameter('forbidWords', 'c, sin');
+        $el->adapt_to_model_answer('c(1,2)');
+        $inputvals = [
+            'ans1_sub_0_0' => 'x',
+            'ans1_sub_1_0' => 'y',
+        ];
+
+        $state = $el->validate_student_response(
+            $inputvals,
+            $options,
+            'c(x,y)',
+            new stack_cas_security()
+        );
+        $this->assertEquals(stack_input::VALID, $state->status);
+        $this->assertEquals('c(x,y)', $state->contentsmodified);
+
+        $inputvals['ans1_sub_1_0'] = 'c(1,2)';
+        $state = $el->validate_student_response(
+            $inputvals,
+            $options,
+            'c(x,y)',
+            new stack_cas_security()
+        );
+        $this->assertEquals(stack_input::INVALID, $state->status);
+        $this->assertStringContainsString('Forbidden function', $state->errors);
+    }
 }

@@ -38,13 +38,18 @@ class stack_matrix_input extends stack_input {
         'validator' => false,
         'feedback' => false,
         'manualgraded' => false,
+        'columnvector' => false,
     ];
 
     // phpcs:ignore moodle.Commenting.MissingDocblock.Function
     public function adapt_to_model_answer($teacheranswer) {
 
         // Work out how big the matrix should be from the INSTANTIATED VALUE of the teacher's answer.
-        $cs = stack_ast_container::make_from_teacher_source('matrix_size(' . $teacheranswer . ')');
+        $sizeexpression = $teacheranswer;
+        if ($this->get_extra_option('columnvector')) {
+            $sizeexpression = 'vec_convert(' . $sizeexpression . ')';
+        }
+        $cs = stack_ast_container::make_from_teacher_source('matrix_size(' . $sizeexpression . ')');
         $cs->get_valid();
         $at1 = new stack_cas_session2([$cs], null, 0);
         $at1->instantiate();
@@ -57,6 +62,9 @@ class stack_matrix_input extends stack_input {
         // These are ints...
         $this->height = $cs->get_list_element(0, true)->value;
         $this->width = $cs->get_list_element(1, true)->value;
+        if ($this->get_extra_option('columnvector') && $this->width !== 1) {
+            $this->errors[] = stack_string('inputcolumnvectorwrongsize');
+        }
     }
 
     // phpcs:ignore moodle.Commenting.MissingDocblock.Function
@@ -142,6 +150,14 @@ class stack_matrix_input extends stack_input {
 
     // phpcs:ignore moodle.Commenting.MissingDocblock.Function
     public function contents_to_maxima($contents) {
+        if ($this->get_extra_option('columnvector')) {
+            $entries = [];
+            foreach ($contents as $row) {
+                $entries[] = reset($row);
+            }
+            return 'c(' . implode(',', $entries) . ')';
+        }
+
         $matrix = [];
         foreach ($contents as $row) {
             $matrix[] = '[' . implode(',', $row) . ']';
@@ -161,7 +177,12 @@ class stack_matrix_input extends stack_input {
 
         // Turn the student's answer, syntax hint, etc., into a PHP array.
         $t = trim($in);
-        if ('matrix(' == substr($t, 0, 7)) {
+        if ($this->get_extra_option('columnvector') && 'c(' == substr($t, 0, 2)) {
+            $entries = $this->modinput_tokenizer(substr($t, 2, -1));
+            for ($i = 0; $i < count($entries); $i++) {
+                $tc[$i] = [trim($entries[$i])];
+            }
+        } else if ('matrix(' == substr($t, 0, 7)) {
             // @codingStandardsIgnoreStart
             // E.g. array("[a,b]","[c,d]").
             // @codingStandardsIgnoreEnd
@@ -235,14 +256,15 @@ class stack_matrix_input extends stack_input {
             $modifiedcontents[] = $modifiedrow;
         }
         // Construct one final "answer" as a single maxima object.
-        // In the case of matrices (where $caslines are empty) create the object directly here.
-        // As this will create a matrix we need to check that 'matrix' is not a forbidden word.
-        // Should it be a forbidden word it gets still applied to the cells.
-        if (isset(stack_cas_security::list_to_map($this->get_parameter('forbidWords', ''))['matrix'])) {
+        // In the case of grids (where $caslines are empty) create the object directly here.
+        // As this creates a matrix or c expression, ignore a forbidden wrapper inserted by STACK.
+        // The original forbidden-word rules have already been applied to each cell above.
+        $wrapper = $this->get_extra_option('columnvector') ? 'c' : 'matrix';
+        if (isset(stack_cas_security::list_to_map($this->get_parameter('forbidWords', ''))[$wrapper])) {
             $modifiedforbid = str_replace('\,', 'COMMA_TAG', $this->get_parameter('forbidWords', ''));
             $modifiedforbid = explode(',', $modifiedforbid);
             array_map('trim', $modifiedforbid);
-            unset($modifiedforbid[array_search('matrix', $modifiedforbid)]);
+            unset($modifiedforbid[array_search($wrapper, $modifiedforbid)]);
             $modifiedforbid = implode(',', $modifiedforbid);
             $modifiedforbid = str_replace('COMMA_TAG', '\,', $modifiedforbid);
             $secrules->set_forbiddenwords(trim($modifiedforbid));
@@ -300,6 +322,9 @@ class stack_matrix_input extends stack_input {
 
         // Metadata for JS users.
         $attr['data-stack-input-type'] = 'matrix';
+        if ($this->get_extra_option('columnvector')) {
+            $attr['data-stack-input-role'] = 'columnvector';
+        }
         if ($this->options->get_option('decimals') === ',') {
             $attr['data-stack-input-decimal-separator'] = ",";
             $attr['data-stack-input-list-separator'] = ";";
@@ -319,7 +344,12 @@ class stack_matrix_input extends stack_input {
             $matrixbrackets = 'matrixnobrackets';
         }
         // Build the html table to contain these values.
-        $xhtml = '<div class="' . $matrixbrackets . '"><table class="matrixtable" id="' . $fieldname .
+        $roleattribute = '';
+        if ($this->get_extra_option('columnvector')) {
+            $roleattribute = ' data-stack-input-role="columnvector"';
+        }
+        $xhtml = '<div class="' . $matrixbrackets . '"' . $roleattribute .
+                '><table class="matrixtable" id="' . $fieldname .
                 '_container" style="display:inline; vertical-align: middle;" ' .
                 'cellpadding="1" cellspacing="0"><tbody>';
         for ($i = 0; $i < $this->height; $i++) {
@@ -394,6 +424,9 @@ class stack_matrix_input extends stack_input {
         }
 
         $data['matrixbrackets'] = $matrixbrackets;
+        if ($this->get_extra_option('columnvector')) {
+            $data['semanticRole'] = 'columnvector';
+        }
         $data['boxWidth'] = $this->parameters['boxWidth'];
         $data['width'] = $this->width;
         $data['height'] = $this->height;
@@ -423,7 +456,8 @@ class stack_matrix_input extends stack_input {
         }
 
         if ($this->requires_validation()) {
-            $response[$this->name . '_val'] = $in;
+            $response[$this->name . '_val'] = $this->get_extra_option('columnvector') ?
+                    $this->contents_to_maxima($tc) : $in;
         }
         return $response;
     }

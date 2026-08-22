@@ -110,6 +110,8 @@ The following keys can be contained inside the input configuration options. The 
 - `matrixbrackets`: The desired matrix bracket style. One of `matrixroundbrackets`, `matrixsquarebrackets`, `matrixbarbrackets`, `matrixnobrackets`. Supported for the types `matrix` and  `varmatrix`
 - `width`: Width of the input matrix. Supported for the `matrix` type.
 - `height` Height of the input matrix. Supported for the `matrix` type.
+- `semanticRole`: If present, indicates that a matrix grid has a more specific mathematical role. The
+  currently supported value is `columnvector`.
 
 
 ### Grade route

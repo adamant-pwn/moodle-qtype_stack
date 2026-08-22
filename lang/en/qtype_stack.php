@@ -178,6 +178,7 @@ $string['inputextraoptions'] = 'Extra options';
 $string['inputextraoptions_help'] = 'Some input types require extra options in order to work. You can enter them here. This value is a CAS expression.';
 $string['inputextraoptions_link'] = '%%WWWROOT%%/question/type/stack/doc/doc.php/Authoring/Inputs.md#Extra options';
 $string['inputoptionunknown'] = 'This input does not support the option \'{$a}\'.';
+$string['inputcolumnvectorwrongsize'] = 'The columnvector option requires a model answer with exactly one column.';
 $string['inputheading'] = 'Input: {$a}';
 $string['inputnamelength'] = 'Input names cannot be longer than 18 characters. \'{$a}\' is too long.';
 $string['inputnameform'] = 'Input names must only be letters followed (optionally) by numbers. \'{$a}\' is illegal.';
