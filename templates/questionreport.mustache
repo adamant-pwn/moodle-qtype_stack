@@ -151,6 +151,42 @@
     </span>
   </p>
 
+  <!-- Switch between the list of tries and the full answer-note analysis -->
+  {{#triesurl}}
+    <p>
+      <a href="{{{triesurl}}}">{{#str}} reporttries, qtype_stack {{/str}}</a> |
+      <a href="{{{fullurl}}}">{{#str}} reportfull, qtype_stack {{/str}}</a>
+    </p>
+  {{/triesurl}}
+  {{#computing}}
+    <div class="alert alert-info">{{#str}} reportcomputing, qtype_stack {{/str}}</div>
+  {{/computing}}
+  {{#tries}}
+    <h3>{{#str}} reporttries, qtype_stack {{/str}}</h3>
+    <p>
+      {{#str}} reporttriessummary, qtype_stack, {"students": "{{students}}", "tries": "{{tries}}", "firstcorrect": "{{firstcorrect}}", "multiple": "{{multiple}}"} {{/str}}
+      <a href="{{{csvurl}}}">{{#str}} reportdownloadcsv, qtype_stack {{/str}}</a>
+    </p>
+    <table class="generaltable">
+      <thead>
+        <tr>
+          <th>{{#str}} reportstudent, qtype_stack {{/str}}</th>
+          <th>{{#str}} reporttry, qtype_stack {{/str}}</th>
+          <th>{{#str}} reportvariant, qtype_stack {{/str}}</th>
+          <th>{{#str}} reporttime, qtype_stack {{/str}}</th>
+          <th>{{#str}} reportanswer, qtype_stack {{/str}}</th>
+          <th>{{#str}} reportstate, qtype_stack {{/str}}</th>
+          <th>{{#str}} reportmark, qtype_stack {{/str}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#rows}}
+          <tr><td>{{student}}</td><td>{{try}}</td><td>{{variant}}</td><td>{{time}}</td><td>{{answer}}</td><td>{{state}}</td><td>{{mark}}</td></tr>
+        {{/rows}}
+      </tbody>
+    </table>
+  {{/tries}}
+
   <!-- Tab headers -->
   <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">

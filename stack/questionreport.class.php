@@ -26,6 +26,7 @@
 defined('MOODLE_INTERNAL') || die();
 use core_question\local\bank\random_question_loader;
 require_once(__DIR__ . '/../locallib.php');
+require_once(__DIR__ . '/../../../engine/lib.php');
 
 /**
  * Allows us access to the protected methods for retrieving question ids available to
@@ -954,4 +955,188 @@ class stack_question_report {
 
         return $quizzes;
     }
+
+    /**
+     * Every saved or submitted response to this question in one quiz, read from the stored step data.
+     * Same restrictions as load_summary_data(): students only, actual quiz answers, all versions of the question.
+     * Needs no question instance and no CAS, so it stays fast on large quizzes.
+     * @param int $questionid any version of the question.
+     * @param int $quizcontextid
+     * @param int $coursecontextid
+     * @param int[]|null $userids only these students (separate groups), or null for all.
+     * @return array one object per try: student name fields, userid, questionattemptid, variant, state, fraction,
+     *     timecreated and response (input name => value).
+     */
+    public static function load_tries(int $questionid, int $quizcontextid, int $coursecontextid,
+            ?array $userids = null): array {
+        global $DB;
+        $usersql = '';
+        $userparams = [];
+        if ($userids !== null) {
+            if (!$userids) {
+                return [];
+            }
+            [$insql, $userparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'tryuser');
+            $usersql = "AND quiza.userid {$insql}";
+        }
+        $namefields = \core_user\fields::for_name()->get_sql('u', false, '', '', false)->selects;
+        $sql = "SELECT qasd.id, qa.id AS questionattemptid, qa.variant, qas.id AS stepid, qas.state, qas.fraction,
+                       qas.timecreated, quiza.userid, qasd.name, qasd.value, {$namefields}
+                  FROM {question_attempts} qa
+                  JOIN {question_usages} qu ON qu.id = qa.questionusageid
+                  JOIN {quiz_attempts} quiza ON quiza.uniqueid = qu.id
+                  JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                  JOIN {question_attempt_step_data} qasd ON qasd.attemptstepid = qas.id
+                  JOIN {user} u ON u.id = quiza.userid
+                 WHERE qu.component = 'mod_quiz'
+                   AND qu.contextid = :quizcontextid
+                   AND qas.sequencenumber >= 0
+                   {$usersql}
+                   AND EXISTS (SELECT 1
+                                 FROM {role_assignments} ra
+                                 JOIN {role} r ON r.id = ra.roleid
+                                WHERE ra.userid = u.id AND r.archetype = 'student' AND ra.contextid = :coursecontextid)
+                   AND qa.questionid IN (SELECT qv.questionid
+                                           FROM {question_versions} qv_original
+                                           JOIN {question_versions} qv ON qv.questionbankentryid = qv_original.questionbankentryid
+                                          WHERE qv_original.questionid = :questionid)
+              ORDER BY quiza.userid, qa.id, qas.sequencenumber, qasd.name";
+        $records = $DB->get_recordset_sql($sql, ['quizcontextid' => $quizcontextid,
+            'coursecontextid' => $coursecontextid, 'questionid' => $questionid] + $userparams);
+        $steps = [];
+        foreach ($records as $record) {
+            if (!isset($steps[$record->stepid])) {
+                $step = clone $record;
+                unset($step->id, $step->name, $step->value);
+                $step->response = [];
+                $steps[$record->stepid] = $step;
+            }
+            // Only what the student entered: behaviour variables start with '-', internal ones with ':' or '_'.
+            if ($record->name === '' || $record->name[0] === '-' || $record->name[0] === ':' || $record->name[0] === '_') {
+                continue;
+            }
+            $steps[$record->stepid]->response[$record->name] = $record->value;
+        }
+        $records->close();
+
+        // A step without student data is kept only if it graded something, e.g. the finish step of deferred or
+        // immediate feedback; it then shows the response it graded, the latest one in that question attempt.
+        $tries = [];
+        $lastresponse = [];
+        foreach ($steps as $step) {
+            if ($step->response) {
+                $lastresponse[$step->questionattemptid] = $step->response;
+            } else if (question_state::get($step->state)->is_graded() && isset($lastresponse[$step->questionattemptid])) {
+                $step->response = $lastresponse[$step->questionattemptid];
+            } else {
+                continue;
+            }
+            $tries[] = $step;
+        }
+        return $tries;
+    }
+
+    /**
+     * Students the current user may see in this quiz: null when unrestricted, otherwise the members of
+     * their allowed groups (separate groups without moodle/site:accessallgroups).
+     * @param context_module $quizcontext
+     * @return int[]|null
+     */
+    public static function visible_userids(context_module $quizcontext): ?array {
+        $cm = get_coursemodule_from_id('quiz', $quizcontext->instanceid, 0, false, MUST_EXIST);
+        if (groups_get_activity_groupmode($cm) != SEPARATEGROUPS || has_capability('moodle/site:accessallgroups', $quizcontext)) {
+            return null;
+        }
+        $userids = [];
+        foreach (groups_get_activity_allowed_groups($cm) as $group) {
+            $userids = array_merge($userids, array_keys(groups_get_members($group->id, 'u.id')));
+        }
+        return array_values(array_unique($userids));
+    }
+
+    /**
+     * Format the tries from load_tries() for the questionreport template.
+     * @param array $tries
+     * @param context $context the quiz context, for moodle/site:viewfullnames.
+     * @return object summary counts and one row per try.
+     */
+    public static function format_tries(array $tries, context $context): object {
+        $viewfullnames = has_capability('moodle/site:viewfullnames', $context);
+        $out = (object) ['rows' => [], 'students' => 0, 'firstcorrect' => 0, 'multiple' => 0, 'tries' => count($tries)];
+        $graded = [];
+        $trynumber = [];
+        foreach ($tries as $try) {
+            $state = question_state::get($try->state);
+            $trynumber[$try->userid] = ($trynumber[$try->userid] ?? 0) + 1;
+            if ($state->is_graded()) {
+                $graded[$try->userid][] = $state;
+            }
+            // One entry per input: the validated expression (<input>_val) where STACK stored one, which also
+            // folds matrix cells (<input>_sub_i_j) into a single matrix; otherwise the raw value.
+            $inputs = [];
+            foreach ($try->response as $name => $value) {
+                if ($name === 'step_lang') {
+                    continue;
+                }
+                if (substr($name, -4) === '_val') {
+                    $inputs[substr($name, 0, -4)] = $value;
+                    continue;
+                }
+                $input = preg_replace('/_sub_\d+_\d+$/', '', $name);
+                if (!array_key_exists($input . '_val', $try->response) && $input === $name) {
+                    $inputs[$name] = $value;
+                }
+            }
+            $inputs = array_map(fn($name, $value) => $name . ': ' . $value, array_keys($inputs), $inputs);
+            $out->rows[] = (object) [
+                'student' => fullname($try, $viewfullnames),
+                'try' => $trynumber[$try->userid],
+                'variant' => $try->variant,
+                'time' => userdate($try->timecreated, get_string('strftimedatetimeshort', 'langconfig')),
+                'answer' => implode('; ', $inputs),
+                'state' => $state->default_string(true),
+                'mark' => $try->fraction === null ? '' : format_float($try->fraction, 2),
+            ];
+        }
+        $out->students = count($trynumber);
+        foreach ($graded as $states) {
+            if ($states[0] === question_state::$gradedright) {
+                $out->firstcorrect++;
+            }
+            if (count($states) > 1) {
+                $out->multiple++;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Cache key for the full analysis: changes whenever a new step is stored for this question in the quiz.
+     * @param int $questionid any version of the question.
+     * @param int $quizcontextid
+     * @return string
+     */
+    public static function cache_key(int $questionid, int $quizcontextid): string {
+        global $DB;
+        $entry = $DB->get_field('question_versions', 'questionbankentryid', ['questionid' => $questionid], MUST_EXIST);
+        [$attempts, $laststep] = array_values((array) $DB->get_record_sql("
+                SELECT COUNT(DISTINCT qa.id) AS attempts, MAX(qas.id) AS laststep
+                  FROM {question_attempts} qa
+                  JOIN {question_usages} qu ON qu.id = qa.questionusageid
+                  JOIN {question_versions} qv ON qv.questionid = qa.questionid
+                  LEFT JOIN {question_attempt_steps} qas ON qas.questionattemptid = qa.id
+                 WHERE qu.component = 'mod_quiz' AND qu.contextid = :quizcontextid AND qv.questionbankentryid = :entry",
+            ['quizcontextid' => $quizcontextid, 'entry' => $entry]));
+        return 'e' . $entry . '_q' . $quizcontextid . '_s' . (int) $laststep . '_a' . (int) $attempts;
+    }
+
+    /**
+     * Number of question attempts the full analysis would process.
+     * @param string $cachekey from cache_key().
+     * @return int
+     */
+    public static function attempts_from_key(string $cachekey): int {
+        return (int) substr($cachekey, strrpos($cachekey, '_a') + 2);
+    }
+
 }

@@ -36,6 +36,8 @@ require_login();
 $questionid = required_param('questionid', PARAM_INT);
 [$qversion, $questionid] = get_latest_question_version($questionid);
 $quizcontext = optional_param('context', null, PARAM_INT);
+// By default list each student's tries from the stored step data; 'full' runs the CAS-based analysis.
+$mode = optional_param('mode', 'tries', PARAM_ALPHA);
 // Load the necessary data.
 $questiondata = question_bank::load_question_data($questionid);
 if (!$questiondata) {
@@ -70,12 +72,29 @@ $questioneditlatesturl = new moodle_url('/question/type/stack/questioneditlatest
 
 require_login();
 
-// Start output.
-echo $OUTPUT->header();
-
 // Get quizzes in which the course is used.
 // Add data for creating quiz selection dropdown.
 $quizzes = stack_question_report::get_relevant_quizzes($questionid, (int) $question->contextid);
+
+// The list of tries can be downloaded; this must happen before any output.
+$download = optional_param('download', '', PARAM_ALPHA);
+if ($quizcontext !== null && $download !== '' && isset($quizzes[$quizcontext])) {
+    // Named student answers: the same capability as the quiz's own Responses report.
+    $quizctx = context::instance_by_id($quizcontext);
+    require_capability('mod/quiz:viewreports', $quizctx);
+    $tries = stack_question_report::format_tries(
+        stack_question_report::load_tries($questionid, $quizcontext, $quizzes[$quizcontext]->coursecontextid,
+            stack_question_report::visible_userids($quizctx)), $quizctx);
+    $columns = ['student', 'try', 'variant', 'time', 'answer', 'state', 'mark'];
+    // Spreadsheets run cells starting with =, +, -, @, tab or CR as formulas; neutralise them.
+    $safe = fn($cell) => preg_match('/^[=+\-@\t\r]/', (string) $cell) ? "'" . $cell : $cell;
+    \core\dataformat::download_data('stack-tries-' . $questionid, $download, array_combine($columns, $columns),
+        new ArrayIterator($tries->rows), fn($row) => array_map($safe, array_values((array) $row)));
+    die;
+}
+
+// Start output.
+echo $OUTPUT->header();
 $quizoutput = [];
 foreach ($quizzes as $contextid => $quiz) {
     $quiz->url = new moodle_url(
@@ -92,9 +111,41 @@ if ($quizcontext === null) {
     $outputdata = new StdClass();
     $outputdata->question = stack_question_report::format_question_data($question);
 } else {
-    // Create analysis report.
-    $report = new stack_question_report($question, $quizcontext, $quizzes[$quizcontext]->coursecontextid);
-    $outputdata = $report->outputdata;
+    $coursecontextid = $quizzes[$quizcontext]->coursecontextid;
+    $reporturl = new moodle_url('/question/type/stack/questiontestreport.php', $urlparams + ['context' => $quizcontext]);
+    if ($mode === 'full') {
+        // The full analysis evaluates responses with the CAS. Serve it from the cache, compute it here for
+        // smaller quizzes, or compute it in the background so that the request cannot time out.
+        $cache = cache::make('qtype_stack', 'questionreport');
+        $cachekey = stack_question_report::cache_key($questionid, $quizcontext);
+        $outputdata = $cache->get($cachekey);
+        if ($outputdata === false && stack_question_report::attempts_from_key($cachekey) <= 200) {
+            $report = new stack_question_report($question, $quizcontext, $coursecontextid);
+            $outputdata = $report->outputdata;
+            $cache->set($cachekey, $outputdata);
+        }
+        if ($outputdata === false) {
+            $task = new \qtype_stack\task\question_report_task();
+            $task->set_custom_data(['questionid' => $questionid, 'quizcontextid' => $quizcontext,
+                'coursecontextid' => $coursecontextid, 'cachekey' => $cachekey]);
+            \core\task\manager::queue_adhoc_task($task, true);
+            $outputdata = new StdClass();
+            $outputdata->question = stack_question_report::format_question_data($question);
+            $outputdata->computing = true;
+        }
+    } else {
+        $outputdata = new StdClass();
+        $outputdata->question = stack_question_report::format_question_data($question);
+        // Named student answers: the same capability as the quiz's own Responses report.
+        $quizctx = context::instance_by_id($quizcontext);
+        require_capability('mod/quiz:viewreports', $quizctx);
+        $outputdata->tries = stack_question_report::format_tries(
+            stack_question_report::load_tries($questionid, $quizcontext, $coursecontextid,
+                stack_question_report::visible_userids($quizctx)), $quizctx);
+    }
+    $outputdata->triesurl = $reporturl->out(false);
+    $outputdata->fullurl = (new moodle_url($reporturl, ['mode' => 'full']))->out(false);
+    $outputdata->csvurl = (new moodle_url($reporturl, ['download' => 'csv']))->out(false);
 }
 
 $outputdata->question->version = $qversion;

@@ -33,4 +33,9 @@ $definitions = [
     'librarycache' => [
         'mode' => cache_store::MODE_APPLICATION,
     ],
+    // Full "Analyze responses" output data; the key includes the latest step id, so new answers invalidate it.
+    'questionreport' => [
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+    ],
 ];
