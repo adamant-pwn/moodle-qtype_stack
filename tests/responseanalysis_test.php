@@ -518,6 +518,24 @@ final class responseanalysis_test extends qtype_stack_testcase {
                 ];
                 $behaviour = 'immediatefeedback';
                 break;
+            case 'deferred':
+                // Deferred feedback: the grade is stored on the finish step, which carries no response data.
+                $q = $generator->create_question(
+                    'stack',
+                    'response_test',
+                    ['name' => 'QNAME1', 'category' => $qcategory->id]
+                );
+                $this->quizquestion = $q;
+                $steps = [
+                    [0, 'Ann', 'Lee', 1,
+                        [1 => ['ans1' => 'thing1_yuck', 'ans1_val' => '"thing1_yuck"', 'step_lang' => 'en']], 1],
+                    [1, 'Ann', 'Lee', 1,
+                        [1 => ['ans1' => 'thing1_true', 'ans1_val' => '"thing1_true"', 'step_lang' => 'en']], 1],
+                    [2, 'Bob', 'Ray', 1,
+                        [1 => ['ans1' => 'thing1_true', 'ans1_val' => '"thing1_true"', 'step_lang' => 'en']], 1],
+                ];
+                $behaviour = 'deferredfeedback';
+                break;
             case 'multiinput':
                 $q = $generator->create_question(
                     'stack',
@@ -796,6 +814,55 @@ final class responseanalysis_test extends qtype_stack_testcase {
         $data = $step->get_qt_data();
         ksort($data);
         return [(int) $step->get_id(), (string) $step->get_state(), $step->get_timecreated(), $data];
+    }
+
+    public function test_load_tries_deferred(): void {
+        global $DB;
+        $this->create_steps('deferred');
+        $tries = stack_question_report::load_tries($this->quizquestion->id, $this->quizcontextid, $this->coursecontextid);
+        // Each attempt: the saved response, then the finish step that graded it.
+        $this->assertEquals(['complete', 'gradedwrong', 'complete', 'gradedright', 'complete', 'gradedright'],
+            array_column($tries, 'state'));
+        $answers = ['yuck', 'yuck', 'true', 'true', 'true', 'true'];
+        foreach ($tries as $i => $try) {
+            $this->assertEquals(['ans1' => "thing1_{$answers[$i]}", 'ans1_val' => "\"thing1_{$answers[$i]}\"",
+                'step_lang' => 'en'], $try->response);
+        }
+        // Tries belong to the student who owns the attempt, not to whoever processed the step.
+        $ann = $DB->get_field('user', 'id', ['firstname' => 'Ann']);
+        $bob = $DB->get_field('user', 'id', ['firstname' => 'Bob']);
+        $this->assertEquals([$ann, $ann, $ann, $ann, $bob, $bob], array_column($tries, 'userid'));
+
+        $this->assertCount(2, stack_question_report::load_tries($this->quizquestion->id, $this->quizcontextid,
+            $this->coursecontextid, [$bob]));
+        $this->assertSame([], stack_question_report::load_tries($this->quizquestion->id, $this->quizcontextid,
+            $this->coursecontextid, []));
+    }
+
+    public function test_format_tries_deferred(): void {
+        $this->create_steps('deferred');
+        $tries = stack_question_report::load_tries($this->quizquestion->id, $this->quizcontextid, $this->coursecontextid);
+        $out = stack_question_report::format_tries($tries, \context::instance_by_id($this->quizcontextid));
+        $this->assertEquals(6, $out->tries);
+        $this->assertEquals(2, $out->students);
+        // Ann was wrong first and graded twice; Bob was right first time.
+        $this->assertEquals(1, $out->firstcorrect);
+        $this->assertEquals(1, $out->multiple);
+        $this->assertEquals('ans1: "thing1_yuck"', $out->rows[1]->answer);
+        $this->assertEquals([1, 2, 3, 4, 1, 2], array_column($out->rows, 'try'));
+    }
+
+    public function test_question_report_task(): void {
+        $this->create_steps('deferred');
+        $key = stack_question_report::cache_key($this->quizquestion->id, $this->quizcontextid);
+        $this->assertEquals(3, stack_question_report::attempts_from_key($key));
+        $task = new \qtype_stack\task\question_report_task();
+        $task->set_custom_data(['questionid' => $this->quizquestion->id, 'quizcontextid' => $this->quizcontextid,
+            'coursecontextid' => $this->coursecontextid, 'cachekey' => $key]);
+        $task->execute();
+        $expected = new stack_question_report(\question_bank::load_question($this->quizquestion->id),
+            $this->quizcontextid, $this->coursecontextid);
+        $this->assertEquals($expected->outputdata, \cache::make('qtype_stack', 'questionreport')->get($key));
     }
 
     public function test_create_summary_interactive(): void {
