@@ -169,18 +169,22 @@ final class library_render_test extends externallib_advanced_testcase {
      */
     public function test_external_library_render(): void {
         global $DB;
-        $cache = cache::make('qtype_stack', 'librarycache');
+        \cache_helper::update_definitions();
+        set_config('libraries', json_encode(['test' => ['name' => 'Test',
+            'url' => 'https://github.com/example/questions']]), 'qtype_stack');
+        $connection = github_library_session::for_library('test');
+        $cache = cache::make('qtype_stack', 'githublibrary');
         $cache->purge();
         $file = new \StdClass();
-        $file->url = 'fakeURL';
-        $cache->set(\stack_question_library::GITHUB . '_flat_file_list', ['file' => $file]);
+        $file->url = 'https://api.github.com/repos/example/questions/git/blobs/' . str_repeat('a', 40);
+        $cache->set($connection['cacheid'] . '_flat_file_list', ['file' => $file]);
         // Set the required capabilities - webservice access and export rights on course.
         $context = context_course::instance($this->course->id);
         $managerroleid = $DB->get_field('role', 'id', ['shortname' => 'manager']);
         role_assign($managerroleid, $this->user->id, $context->id);
         role_assign($managerroleid, $this->user->id, \context_system::instance()->id);
 
-        $returnvalue = fake_render::render_execute($this->qcategory->id, 'file', \stack_question_library::GITHUB, '');
+        $returnvalue = fake_render::render_execute($this->qcategory->id, 'file', $connection['cacheid'], '');
 
         // We need to execute the return values cleaning process to simulate
         // the web service server.
@@ -194,7 +198,7 @@ final class library_render_test extends externallib_advanced_testcase {
             $returnvalue['questionrender']
         );
         $this->assertEquals(
-            'Fake XML: githublibrary fakeURL',
+            'Fake XML: githublibrary ' . $file->url,
             $returnvalue['questiontext']
         );
     }

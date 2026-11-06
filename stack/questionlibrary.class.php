@@ -87,12 +87,13 @@ class stack_question_library {
     /**
      * Build headers for GitHub, using STACK_GITHUB_TOKEN only in command-line scripts.
      *
+     * @param string|null $token Explicit request credential, or null for the CLI environment
      * @return array HTTP headers
      */
-    protected static function github_headers(): array {
+    protected static function github_headers(?string $token = null): array {
         $headers = ['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json'];
         // Web requests must not inherit a server credential: library caches are shared between users.
-        $token = defined('CLI_SCRIPT') && CLI_SCRIPT ? getenv('STACK_GITHUB_TOKEN') : false;
+        $token = $token ?? (defined('CLI_SCRIPT') && CLI_SCRIPT ? getenv('STACK_GITHUB_TOKEN') : false);
         if ($token !== false && $token !== '' && !preg_match('/[\r\n]/', $token)) {
             $headers[] = 'Authorization: Bearer ' . $token;
         }
@@ -104,9 +105,10 @@ class stack_question_library {
      *
      * @param string $url Request URL
      * @param int $timeout Request timeout in seconds; zero uses the cURL default
+     * @param string|null $token Explicit request credential
      * @return array Response body, HTTP status and safe diagnostic text
      */
-    protected static function request_github(string $url, int $timeout = 0): array {
+    protected static function request_github(string $url, int $timeout = 0, ?string $token = null): array {
         $parts = parse_url($url);
         if (
             ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') !== 'api.github.com' ||
@@ -118,7 +120,7 @@ class stack_question_library {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => static::github_headers(),
+            CURLOPT_HTTPHEADER => static::github_headers($token),
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$diagnostics): int {
@@ -280,12 +282,13 @@ class stack_question_library {
      * See questionfolder.mustache for output and usage.
      * @param string|array $detail URL of the directory required or search term and apikey
      * @param string $repotype The type of repo being searched.
+     * @param string|null $token Explicit GitHub credential
      * @return array [object StdClass structured representation of the file system, array flat array of file objects]
      */
-    public static function get_file_list_from_repo($detail, $repotype) {
+    public static function get_file_list_from_repo($detail, $repotype, ?string $token = null) {
         switch ($repotype) {
             case self::GITHUB:
-                return self::list_github_repo($detail);
+                return self::list_github_repo($detail, $token);
             case self::NRWSEARCH:
                 return self::list_nrw_search($detail);
             default:
@@ -304,7 +307,7 @@ class stack_question_library {
     public static function get_external_file($requestedfile, $repotype, $apikey) {
         switch ($repotype) {
             case self::GITHUB:
-                return self::get_external_github_file($requestedfile);
+                return self::get_external_github_file($requestedfile, $apikey);
             case self::NRWSEARCH:
                 return self::get_external_nrw_file($requestedfile, $apikey);
             default:
@@ -315,9 +318,10 @@ class stack_question_library {
     /**
      * Retrieves a list of all the files in a GitHub repo via API
      * @param string $githuburl
+     * @param string|null $token Explicit request credential
      * @return array [object StdClass structured representation of the file system, array flat array of file objects]
      */
-    public static function list_github_repo(string $githuburl) {
+    public static function list_github_repo(string $githuburl, ?string $token = null) {
         // Parse github URL like:
         // https://github.com/{owner}/{repo}/tree/{branch}/{path...}.
         $parts = parse_url($githuburl);
@@ -355,7 +359,7 @@ class stack_question_library {
 
         // Always use the git/trees API with recursive=1, then filter by subpath.
         $apiurl = "{$apibase}/git/trees/" . rawurlencode($branch) . "?recursive=1";
-        [$response, $httpcode, $details] = static::request_github($apiurl, 10);
+        [$response, $httpcode, $details] = static::request_github($apiurl, 10, $token);
         if ($response === false || $httpcode !== 200) {
             $errorresponse->error .= ': ' . $details;
             return [$errorresponse, []];
@@ -543,10 +547,11 @@ class stack_question_library {
      * Fetch a file from GitHub using the api blob URL.
      *
      * @param string $requestedfile API URL
+     * @param string|null $token Explicit request credential
      * @return string XML file contents
      */
-    public static function get_external_github_file($requestedfile) {
-        [$res, $httpcode, $details] = static::request_github($requestedfile);
+    public static function get_external_github_file($requestedfile, ?string $token = null) {
+        [$res, $httpcode, $details] = static::request_github($requestedfile, 0, $token);
         if ($res === false || $httpcode !== 200) {
             throw new \stack_exception('File unavailable (' . $details . ').');
         }
@@ -569,9 +574,9 @@ class stack_question_library {
     }
 
     /**
-     * Fetch a file from GitHub using the api blob URL.
-     *
-     * @param string $requestedfile API URL
+     * Fetch a question from the NRW API.
+     * @param string $requestedid Question id
+     * @param string $apikey NRW API credential
      * @return string XML file contents
      */
     public static function get_external_nrw_file($requestedid, $apikey) {

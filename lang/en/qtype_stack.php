@@ -2152,3 +2152,13 @@ $string['varmatrixaugmentedstructure'] = 'You need to enter a matrix with the co
 $string['varmatrixaugmentedellipsis'] = 'The dots (...) stand for optional extra entries.';
 $string['varmatrixaugmentedrows'] = 'Choose the number of rows; keep block widths consistent.';
 $string['varmatrixaugmentedonerow'] = 'Use only one row.';
+
+$string['cachedef_githublibrary'] = 'GitHub library data for the current session';
+$string['githubtoken'] = 'GitHub personal access token';
+$string['githubconnect'] = 'Use token';
+$string['githubforget'] = 'Forget token';
+$string['githubtokenexpires'] = 'Token expires here at {$a}, or when you log out.';
+$string['githubtokenhelp'] = 'Use a fine-grained token with read-only Contents permission for this repository. Moodle keeps it in your server-side session for up to one hour. Imported questions remain in the destination question bank after you forget the token.';
+$string['githubtokeninvalid'] = 'Enter a token without spaces or control characters (up to 255 characters).';
+$string['githubsessionexpired'] = 'This library connection is unavailable or has changed. Reopen the library and enter your token if needed.';
+$string['githubsourcepreview'] = 'Source preview only in this draft. Rendered previews for authenticated libraries need protected plot and attachment storage. You can import this file into a question bank you are authorised to use.';

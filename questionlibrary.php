@@ -69,7 +69,6 @@ $title = stack_string('stack_library');
 $PAGE->set_title($title);
 $PAGE->set_heading($title);
 $PAGE->set_pagelayout('popup');
-echo $OUTPUT->header();
 
 if ($backurl) {
     $returnlink = new moodle_url($backurl);
@@ -144,7 +143,7 @@ if (str_starts_with($location, stack_question_library::SITELIB)) {
     $location = __DIR__ . '/samplequestions/stacklibrary';
 }
 
-if ($isrefresh) {
+if ($isrefresh && $external !== stack_question_library::GITHUB) {
     $refreshfiles = $cache->get($cacheid . '_flat_file_list');
     if ($refreshfiles) {
         $refreshfiles = array_keys($refreshfiles);
@@ -157,9 +156,54 @@ if ($isrefresh) {
     $cache->delete_many($refreshfiles);
 }
 
+$githubconnection = null;
+$githubtokenform = '';
+if ($external === stack_question_library::GITHUB) {
+    $githubconnection = \qtype_stack\github_library_session::for_library($libraryid);
+    if (($submitted = data_submitted()) && isset($submitted->githubaction)) {
+        require_sesskey();
+        if ($submitted->githubaction === 'connect') {
+            \qtype_stack\github_library_session::connect($libraryid, (string)($submitted->githubtoken ?? ''));
+        } else if ($submitted->githubaction === 'forget') {
+            \qtype_stack\github_library_session::forget($libraryid);
+        } else {
+            throw new moodle_exception('invalidparameter');
+        }
+        redirect(new moodle_url($PAGE->url, ['location' => $location]));
+    }
+    $cache = cache::make('qtype_stack', 'githublibrary');
+    $cacheid = $githubconnection['cacheid'];
+    $formurl = new moodle_url($PAGE->url, ['location' => $location]);
+    $githubtokenform = html_writer::start_tag('form', ['method' => 'post', 'action' => $formurl->out(false)]);
+    $githubtokenform .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    $githubtokenform .= html_writer::tag('label', get_string('githubtoken', 'qtype_stack'), ['for' => 'githubtoken']);
+    $githubtokenform .= html_writer::empty_tag('input', ['type' => 'password', 'id' => 'githubtoken',
+        'name' => 'githubtoken', 'value' => '', 'autocomplete' => 'off', 'maxlength' => 255]);
+    $githubtokenform .= html_writer::tag('button', get_string('githubconnect', 'qtype_stack'),
+        ['type' => 'submit', 'name' => 'githubaction', 'value' => 'connect']);
+    if ($githubconnection['token'] !== '') {
+        $githubtokenform .= html_writer::tag('button', get_string('githubforget', 'qtype_stack'),
+            ['type' => 'submit', 'name' => 'githubaction', 'value' => 'forget']);
+        $githubtokenform .= html_writer::tag('p', get_string('githubtokenexpires', 'qtype_stack',
+            userdate($githubconnection['expires'])));
+    }
+    $githubtokenform .= html_writer::tag('p', get_string('githubtokenhelp', 'qtype_stack'));
+    $githubtokenform .= html_writer::end_tag('form');
+}
+
+echo $OUTPUT->header();
+
 $files = new StdClass();
 
-if ($cacheid && $cacheid != stack_question_library::NRWSEARCH) {
+if ($githubconnection) {
+    // Refresh remote authorization and the listing on each visit; never reuse a shared file list.
+    $cache->delete($cacheid . '_flat_file_list');
+    [$files, $flatfiles] = stack_question_library::get_file_list_from_repo(
+        $externaldetail, $external, $githubconnection['token']);
+    if (!isset($files->error)) {
+        $cache->set($cacheid . '_flat_file_list', $flatfiles);
+    }
+} else if ($cacheid && $cacheid != stack_question_library::NRWSEARCH) {
     $files = $cache->get($cacheid . '_file_list');
     if (!$files) {
         if ($external) {
@@ -182,6 +226,7 @@ $outputdata->returnlink = $returnlink->out();
 $outputdata->dashboardlink = $dashboardlink->out();
 $outputdata->quizlink = $quizlink->out();
 $outputdata->returntext = $returntext;
+$outputdata->githubtokenform = $githubtokenform;
 $outputdata->files = (isset($files->children)) ? $files->children : [];
 if (isset($files->error)) {
     $outputdata->fileserror = $files->error;

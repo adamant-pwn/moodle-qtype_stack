@@ -129,8 +129,14 @@ class library_render extends \external_api {
         }
 
         // Check if we've already cached the answer.
-        $cache = cache::make('qtype_stack', 'librarycache');
-        $result = $cache->get($external ? "{$params['cacheid']}/{$params['filepath']}" : $params['filepath']);
+        $githubconnection = null;
+        if ($external === stack_question_library::GITHUB) {
+            $githubconnection = github_library_session::resolve($params['cacheid']);
+            $apikey = $githubconnection['token'];
+        }
+        $cache = cache::make('qtype_stack', $githubconnection ? 'githublibrary' : 'librarycache');
+        $result = $githubconnection ? false : $cache->get(
+            $external ? "{$params['cacheid']}/{$params['filepath']}" : $params['filepath']);
         $isquiz = (pathinfo($params['filepath'], PATHINFO_EXTENSION) === 'json'
                             && strrpos($params['filepath'], '_quiz.json') !== false) ? true : false;
 
@@ -138,7 +144,9 @@ class library_render extends \external_api {
             $requestedfile = $CFG->dataroot . '/stack/' . $params['filepath'];
         } else if ($external && $external === stack_question_library::GITHUB) {
             $externalfiles = $cache->get($params['cacheid'] . '_flat_file_list');
-            $requestedfile = $externalfiles[$params['filepath']]->url;
+            $requestedfile = github_library_session::file_url($githubconnection, $externalfiles ?: [], $params['filepath']);
+            $githubrenderkey = $params['cacheid'] . '/' . hash('sha256', $requestedfile . current_language());
+            $result = $cache->get($githubrenderkey);
         } else if ($external && $external === stack_question_library::NRWSEARCH) {
             $requestedfile = $params['filepath'];
             $apikey = get_config('qtype_stack', 'nrwapikey');
@@ -157,6 +165,16 @@ class library_render extends \external_api {
             $qcontents = static::call_external_request($requestedfile, $external, $apikey);
         } else {
             $qcontents = file_get_contents($requestedfile);
+        }
+
+        if ($githubconnection && $githubconnection['token'] !== '') {
+            // Draft: never send private source to the shared CAS, plot store or HTML renderer.
+            return [
+                'questionrender' => \html_writer::tag('p', get_string('githubsourcepreview', 'qtype_stack'))
+                    . \html_writer::tag('pre', s($qcontents), ['class' => 'tex2jax_ignore']),
+                'iframes' => [], 'questionname' => basename($params['filepath']),
+                'questiontext' => $qcontents, 'questionvariables' => '', 'questiondescription' => '', 'isstack' => false,
+            ];
         }
 
         if (!$result && !$isquiz) {
@@ -184,7 +202,8 @@ class library_render extends \external_api {
                     'questiondescription' => $question->questiondescription,
                     'isstack' => true,
                 ];
-                $cache->set($external ? "{$params['cacheid']}/{$params['filepath']}" : $params['filepath'], $result);
+                $cache->set($githubconnection ? $githubrenderkey : ($external ? "{$params['cacheid']}/{$params['filepath']}"
+                    : $params['filepath']), $result);
             } catch (\stack_exception $e) {
                 // If the question is not a STACK question we can't render it
                 // but we still want users to be able to import it.

@@ -819,7 +819,11 @@ final class library_import_test extends externallib_advanced_testcase {
      * @return void
      */
     public function set_external(): void {
-        $cache = cache::make('qtype_stack', 'librarycache');
+        \cache_helper::update_definitions();
+        set_config('libraries', json_encode(['TEST' => ['name' => 'Test',
+            'url' => 'https://github.com/maths/moodle-qtype_stack/tree/master/samplequestions/importtest']]), 'qtype_stack');
+        $connection = github_library_session::for_library('TEST');
+        $cache = cache::make('qtype_stack', 'githublibrary');
         $cache->purge();
         [$files, $flatfiles ] =
             \stack_question_library::get_file_list_from_repo(
@@ -828,7 +832,7 @@ final class library_import_test extends externallib_advanced_testcase {
             );
 
         $this->assertFalse(isset($files->error), $files->error ?? '');
-        $cache->set(\stack_question_library::GITHUB . '_TEST_flat_file_list', $flatfiles);
+        $cache->set($connection['cacheid'] . '_flat_file_list', $flatfiles);
         $this->filepath = 'Course1/top/CR_Diff_01/CR-Diff-01-basic-1-e.xml';
     }
 
@@ -851,7 +855,7 @@ final class library_import_test extends externallib_advanced_testcase {
             $this->qcategory->id,
             $this->filepath,
             false,
-            \stack_question_library::GITHUB . '_TEST',
+            github_library_session::for_library('TEST')['cacheid'],
             ''
         );
 
@@ -893,7 +897,7 @@ final class library_import_test extends externallib_advanced_testcase {
             $this->qcategory->id,
             $this->filepath,
             false,
-            \stack_question_library::GITHUB . '_TEST',
+            \stack_question_library::GITHUB . '_untrusted',
             ''
         );
     }
@@ -916,7 +920,7 @@ final class library_import_test extends externallib_advanced_testcase {
             $this->qcategory->id,
             $this->filepath,
             true,
-            \stack_question_library::GITHUB . '_TEST',
+            github_library_session::for_library('TEST')['cacheid'],
             ''
         );
 
@@ -964,7 +968,7 @@ final class library_import_test extends externallib_advanced_testcase {
             $this->qcategory->id,
             $quizfilepath,
             true,
-            \stack_question_library::GITHUB . '_TEST',
+            github_library_session::for_library('TEST')['cacheid'],
             ''
         );
 

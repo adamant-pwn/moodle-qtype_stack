@@ -74,6 +74,20 @@ final class questionlibrary_github_test extends \basic_testcase {
             json_decode($output, true));
     }
 
+    /** Explicit user credentials never fall back to an environment credential. */
+    public function test_explicit_credential(): void {
+        $previous = getenv('STACK_GITHUB_TOKEN');
+        try {
+            putenv('STACK_GITHUB_TOKEN=server-secret');
+            $method = new \ReflectionMethod(\stack_question_library::class, 'github_headers');
+            $this->assertSame(['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json',
+                'Authorization: Bearer user-secret'], $method->invoke(null, 'user-secret'));
+            $this->assertCount(2, $method->invoke(null, ''));
+        } finally {
+            putenv($previous === false ? 'STACK_GITHUB_TOKEN' : 'STACK_GITHUB_TOKEN=' . $previous);
+        }
+    }
+
     /**
      * Unsupported origins are rejected before executing any request, with or without a token.
      */
@@ -150,9 +164,10 @@ final class questionlibrary_github_test extends \basic_testcase {
              *
              * @param string $url Request URL
              * @param int $timeout Request timeout in seconds
+             * @param string|null $token Explicit credential
              * @return array Response body, status and diagnostics
              */
-            protected static function request_github(string $url, int $timeout = 0): array {
+            protected static function request_github(string $url, int $timeout = 0, ?string $token = null): array {
                 return ['sensitive response', 403, 'HTTP 403, cURL error 0, x-ratelimit-remaining=0'];
             }
         };

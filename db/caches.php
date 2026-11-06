@@ -30,6 +30,9 @@ $definitions = [
         // STACK does its own static acceleration.
         'staticacceleration' => false,
     ],
+    'githublibrary' => [
+        'mode' => cache_store::MODE_SESSION,
+    ],
     'librarycache' => [
         'mode' => cache_store::MODE_APPLICATION,
     ],

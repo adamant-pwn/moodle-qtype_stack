@@ -50,6 +50,17 @@ use stack_question_library;
  */
 class library_import extends \external_api {
     /**
+     * Fetch a file using the credential resolved for this request.
+     * @param string $url Remote file URL or NRW id
+     * @param string $external Repository type
+     * @param string $token Credential
+     * @return string File contents
+     */
+    protected static function fetch_external_file(string $url, string $external, string $token): string {
+        return stack_question_library::get_external_file($url, $external, $token);
+    }
+
+    /**
      * Returns parameter types for library_import webservice.
      *
      * @return \external_function_parameters Parameters
@@ -116,6 +127,7 @@ class library_import extends \external_api {
         $categories = [];
         $external = null;
         $externalfiles = null;
+        $githubconnection = null;
 
         if (str_starts_with($params['filepath'], stack_question_library::SITELIB)) {
             $requestedfile = $CFG->dataroot . '/stack/' . $params['filepath'];
@@ -123,8 +135,11 @@ class library_import extends \external_api {
         } else if (str_starts_with($params['cacheid'], stack_question_library::GITHUB)) {
             $requestedfile = make_request_directory() . "/importq.xml";
             $external = stack_question_library::GITHUB;
-            $cache = \cache::make('qtype_stack', 'librarycache');
-            $externalfiles = $cache->get($params['cacheid'] . '_flat_file_list');
+            require_capability('qtype/stack:useexternallibraries', \context_system::instance());
+            $githubconnection = github_library_session::resolve($params['cacheid']);
+            $apikey = $githubconnection['token'];
+            $cache = \cache::make('qtype_stack', 'githublibrary');
+            $externalfiles = $cache->get($params['cacheid'] . '_flat_file_list') ?: [];
         } else if (str_starts_with($params['cacheid'], stack_question_library::NRWSEARCH)) {
             $requestedfile = make_request_directory() . "/importq.xml";
             $external = stack_question_library::NRWSEARCH;
@@ -151,8 +166,8 @@ class library_import extends \external_api {
         ) {
             // We've got a quiz file. Load JSON and instantiate.
             if ($external) {
-                $url = $externalfiles[$params['filepath']]->url;
-                $quizcontents = stack_question_library::get_external_file($url, $external, $apikey);
+                $url = github_library_session::file_url($githubconnection, $externalfiles, $params['filepath']);
+                $quizcontents = static::fetch_external_file($url, $external, $apikey);
             } else {
                 $quizcontents = file_get_contents($requestedfile);
             }
@@ -217,8 +232,8 @@ class library_import extends \external_api {
             $qformat->setCategory($thiscategory);
             $qformat->setCatfromfile(true);
             if ($external) {
-                $url = $externalfiles[$category]->url;
-                file_put_contents($requestedfile, stack_question_library::get_external_file($url, $external, $apikey));
+                $url = github_library_session::file_url($githubconnection, $externalfiles, $category);
+                file_put_contents($requestedfile, static::fetch_external_file($url, $external, $apikey));
                 $qformat->setFilename($requestedfile);
             } else {
                 $qformat->setFilename($basedir . $category);
@@ -270,11 +285,11 @@ class library_import extends \external_api {
             // Will fall back to the set category above otherwise.
             $qformat->setCatfromfile(true);
             if ($external === stack_question_library::GITHUB) {
-                $url = $externalfiles[$file]->url;
-                file_put_contents($requestedfile, stack_question_library::get_external_file($url, $external, $apikey));
+                $url = github_library_session::file_url($githubconnection, $externalfiles, $file);
+                file_put_contents($requestedfile, static::fetch_external_file($url, $external, $apikey));
                 $qformat->setFilename($requestedfile);
             } else if ($external === stack_question_library::NRWSEARCH) {
-                file_put_contents($requestedfile, stack_question_library::get_external_file($file, $external, $apikey));
+                file_put_contents($requestedfile, static::fetch_external_file($file, $external, $apikey));
                 $qformat->setFilename($requestedfile);
             } else {
                 $qformat->setFilename($basedir . $file);
