@@ -59,6 +59,7 @@ final class questionlibrary_github_test extends \basic_testcase {
     public function test_web_requests_ignore_environment_token(): void {
         $script = 'define("MOODLE_INTERNAL", true); define("CLI_SCRIPT", false);'
             . 'require ' . var_export(__DIR__ . '/../stack/questionlibrary.class.php', true) . ';'
+            . 'function get_config($component, $name) { return false; }'
             . 'putenv("STACK_GITHUB_TOKEN=server-secret");'
             . '$method = new \ReflectionMethod(\stack_question_library::class, "github_headers");'
             . 'echo json_encode($method->invoke(null));';

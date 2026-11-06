@@ -253,6 +253,16 @@ $settings->add(new admin_setting_configtextarea(
     5
 ));
 
+$setting = new admin_setting_encryptedpassword(
+    'qtype_stack/githubtoken',
+    get_string('settinggithubtoken', 'qtype_stack'),
+    get_string('settinggithubtoken_desc', 'qtype_stack')
+);
+$setting->set_updatedcallback(static function () {
+    cache_helper::purge_by_definition('qtype_stack', 'librarycache');
+});
+$settings->add($setting);
+
 $settings->add(new admin_setting_configtext(
     'qtype_stack/nrwapikey',
     get_string('settingnrwapikey', 'qtype_stack'),

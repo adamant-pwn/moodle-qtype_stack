@@ -85,14 +85,19 @@ class stack_question_library {
     }
 
     /**
-     * Build headers for GitHub, using STACK_GITHUB_TOKEN only in command-line scripts.
+     * Build GitHub headers using the CLI environment or the encrypted site credential.
      *
      * @return array HTTP headers
      */
     protected static function github_headers(): array {
         $headers = ['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json'];
-        // Web requests must not inherit a server credential: library caches are shared between users.
-        $token = defined('CLI_SCRIPT') && CLI_SCRIPT ? getenv('STACK_GITHUB_TOKEN') : false;
+        // CLI/CI never inherits the site's credential. Web access is explicitly shared by the administrator.
+        if (defined('CLI_SCRIPT') && CLI_SCRIPT) {
+            $token = getenv('STACK_GITHUB_TOKEN');
+        } else {
+            $encrypted = get_config('qtype_stack', 'githubtoken');
+            $token = $encrypted ? \core\encryption::decrypt($encrypted) : '';
+        }
         if ($token !== false && $token !== '' && !preg_match('/[\r\n]/', $token)) {
             $headers[] = 'Authorization: Bearer ' . $token;
         }
