@@ -64,6 +64,15 @@ class stack_question_library {
     public const NRWAPIBASE = 'https://vmits1614.vm.ruhr-uni-bochum.de/dev/api';
 
     /**
+     * Stable setting key for an entry in the external library catalogue.
+     * @param string $libraryid Catalogue key (independent of the display name)
+     * @return string Encrypted configuration setting name
+     */
+    public static function github_token_setting(string $libraryid): string {
+        return 'githubtoken_' . hash('sha256', $libraryid);
+    }
+
+    /**
      * Wrapper for curl_exec to allow mocking in unit tests.
      *
      * @param resource $ch cURL handle
@@ -85,19 +94,15 @@ class stack_question_library {
     }
 
     /**
-     * Build GitHub headers using the CLI environment or the encrypted site credential.
+     * Build GitHub headers using an encrypted Moodle setting.
      *
+     * @param string $setting Encrypted configuration setting name
      * @return array HTTP headers
      */
-    protected static function github_headers(): array {
+    protected static function github_headers(string $setting = 'githubtoken'): array {
         $headers = ['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json'];
-        // CLI/CI never inherits the site's credential. Web access is explicitly shared by the administrator.
-        if (defined('CLI_SCRIPT') && CLI_SCRIPT) {
-            $token = getenv('STACK_GITHUB_TOKEN');
-        } else {
-            $encrypted = get_config('qtype_stack', 'githubtoken');
-            $token = $encrypted ? \core\encryption::decrypt($encrypted) : '';
-        }
+        $encrypted = get_config('qtype_stack', $setting);
+        $token = $encrypted ? \core\encryption::decrypt($encrypted) : '';
         if ($token !== false && $token !== '' && !preg_match('/[\r\n]/', $token)) {
             $headers[] = 'Authorization: Bearer ' . $token;
         }
@@ -109,9 +114,10 @@ class stack_question_library {
      *
      * @param string $url Request URL
      * @param int $timeout Request timeout in seconds; zero uses the cURL default
-     * @return array Response body, HTTP status and safe diagnostic text
+     * @param string $setting Encrypted configuration setting name
+     * @return array Response body, HTTP status, safe diagnostic text and numeric diagnostic headers
      */
-    protected static function request_github(string $url, int $timeout = 0): array {
+    protected static function request_github(string $url, int $timeout = 0, string $setting = 'githubtoken'): array {
         $parts = parse_url($url);
         if (
             ($parts['scheme'] ?? '') !== 'https' || ($parts['host'] ?? '') !== 'api.github.com' ||
@@ -123,7 +129,7 @@ class stack_question_library {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => static::github_headers(),
+            CURLOPT_HTTPHEADER => static::github_headers($setting),
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$diagnostics): int {
@@ -146,7 +152,7 @@ class stack_question_library {
         foreach ($diagnostics as $name => $value) {
             $details .= ', ' . $name . '=' . $value;
         }
-        return [$response, $status, $details];
+        return [$response, $status, $details, $diagnostics];
     }
 
     /**
@@ -290,7 +296,7 @@ class stack_question_library {
     public static function get_file_list_from_repo($detail, $repotype) {
         switch ($repotype) {
             case self::GITHUB:
-                return self::list_github_repo($detail);
+                return is_array($detail) ? self::list_github_repo($detail['url'], $detail['id']) : self::list_github_repo($detail);
             case self::NRWSEARCH:
                 return self::list_nrw_search($detail);
             default:
@@ -309,7 +315,7 @@ class stack_question_library {
     public static function get_external_file($requestedfile, $repotype, $apikey) {
         switch ($repotype) {
             case self::GITHUB:
-                return self::get_external_github_file($requestedfile);
+                return self::get_external_github_file($requestedfile, is_array($apikey) ? $apikey : []);
             case self::NRWSEARCH:
                 return self::get_external_nrw_file($requestedfile, $apikey);
             default:
@@ -320,9 +326,10 @@ class stack_question_library {
     /**
      * Retrieves a list of all the files in a GitHub repo via API
      * @param string $githuburl
+     * @param string $libraryid Configured catalogue key, or empty to use only the default credential
      * @return array [object StdClass structured representation of the file system, array flat array of file objects]
      */
-    public static function list_github_repo(string $githuburl) {
+    public static function list_github_repo(string $githuburl, string $libraryid = '') {
         // Parse github URL like:
         // https://github.com/{owner}/{repo}/tree/{branch}/{path...}.
         $parts = parse_url($githuburl);
@@ -360,7 +367,28 @@ class stack_question_library {
 
         // Always use the git/trees API with recursive=1, then filter by subpath.
         $apiurl = "{$apibase}/git/trees/" . rawurlencode($branch) . "?recursive=1";
-        [$response, $httpcode, $details] = static::request_github($apiurl, 10);
+        $setting = 'githubtoken';
+        if ($libraryid !== '') {
+            $library = (json_decode(get_config('qtype_stack', 'libraries') ?: '{}', true) ?: [])[$libraryid] ?? null;
+            if (!$library || $library['url'] !== $githuburl) {
+                throw new \stack_exception('Unknown GitHub library.');
+            }
+            $specific = self::github_token_setting($libraryid);
+            if (get_config('qtype_stack', $specific)) {
+                $setting = $specific;
+            }
+        }
+        [$response, $httpcode, $details, $diagnostics] = static::request_github($apiurl, 10, $setting);
+        // Retry access failures only. Rate limits must retain their original diagnostics.
+        if ($setting !== 'githubtoken' && in_array($httpcode, [401, 403, 404], true)
+                && $response !== false && !isset($diagnostics['retry-after'])
+                && ($diagnostics['x-ratelimit-remaining'] ?? null) !== '0'
+                && !str_contains(strtolower((string)$response), 'rate limit')
+                && get_config('qtype_stack', 'githubtoken')
+                && static::github_headers($setting) !== static::github_headers('githubtoken')) {
+            $setting = 'githubtoken';
+            [$response, $httpcode, $details] = static::request_github($apiurl, 10, $setting);
+        }
         if ($response === false || $httpcode !== 200) {
             $errorresponse->error .= ': ' . $details;
             return [$errorresponse, []];
@@ -378,6 +406,8 @@ class stack_question_library {
                     'relpath' => $relpath,
                     'isdirectory' => ($item['type'] === 'tree') ? 1 : 0,
                     'url' => ($item['type'] === 'tree') ? '' : $item['url'],
+                    // Cache only the setting name, never the credential. Keep downloads on the listing's credential.
+                    'githubcredential' => ['setting' => $setting, 'repository' => $apibase],
                 ];
             }
         }
@@ -548,10 +578,14 @@ class stack_question_library {
      * Fetch a file from GitHub using the api blob URL.
      *
      * @param string $requestedfile API URL
+     * @param array $credential Server-cached repository and setting selected during listing
      * @return string XML file contents
      */
-    public static function get_external_github_file($requestedfile) {
-        [$res, $httpcode, $details] = static::request_github($requestedfile);
+    public static function get_external_github_file($requestedfile, array $credential = []) {
+        if ($credential && !str_starts_with($requestedfile, $credential['repository'] . '/git/blobs/')) {
+            throw new \stack_exception('File does not belong to the GitHub library.');
+        }
+        [$res, $httpcode, $details] = static::request_github($requestedfile, 0, $credential['setting'] ?? 'githubtoken');
         if ($res === false || $httpcode !== 200) {
             throw new \stack_exception('File unavailable (' . $details . ').');
         }

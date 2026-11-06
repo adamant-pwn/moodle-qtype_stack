@@ -9,7 +9,7 @@ require_once($CFG->libdir . '/adminlib.php');
 require_once(__DIR__ . '/../stack/questionlibrary.class.php');
 
 /**
- * Encrypted site credentials and the CLI/web boundary.
+ * Encrypted credentials shared by CLI and web requests.
  * @package qtype_stack
  * @copyright 2026 Oleksandr Kulkov
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -19,6 +19,7 @@ final class github_admin_token_test extends \advanced_testcase {
     public function test_setting_storage_rotation_and_removal(): void {
         global $DB, $CFG;
         $this->resetAfterTest();
+        unset($CFG->forced_plugin_settings['qtype_stack']['githubtoken']);
         $this->setAdminUser();
         $settings = new \admin_settingpage('stacktokenfixture', 'STACK');
         require(__DIR__ . '/../settings.php');
@@ -47,18 +48,64 @@ final class github_admin_token_test extends \advanced_testcase {
         }
     }
 
-    public function test_cli_uses_only_environment(): void {
+    public function test_cli_uses_encrypted_setting(): void {
+        global $CFG;
         $this->resetAfterTest();
+        unset($CFG->forced_plugin_settings['qtype_stack']['githubtoken']);
         set_config('githubtoken', \core\encryption::encrypt('site-pat-secret'), 'qtype_stack');
-        $previous = getenv('STACK_GITHUB_TOKEN');
-        try {
-            $method = new \ReflectionMethod(\stack_question_library::class, 'github_headers');
-            putenv('STACK_GITHUB_TOKEN');
+        $method = new \ReflectionMethod(\stack_question_library::class, 'github_headers');
+        $this->assertContains('Authorization: Bearer site-pat-secret', $method->invoke(null));
+    }
+
+    public function test_library_setting_and_catalogue_changes_clear_cache(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $catalogue = ['bank' => ['name' => 'Bank', 'url' => 'https://github.com/example/questions']];
+        set_config('libraries', json_encode($catalogue), 'qtype_stack');
+        $settings = new \admin_settingpage('stacktokenfixture', 'STACK');
+        require(__DIR__ . '/../settings.php');
+        $name = \stack_question_library::github_token_setting('bank');
+        $setting = $settings->settings->{'qtype_stack' . $name};
+        $cache = \cache::make('qtype_stack', 'librarycache');
+        foreach (['library-secret', 'replacement-secret', ''] as $token) {
+            $previous = $setting->get_setting();
+            $cache->set('cached-private-file', 'content');
+            $this->assertSame('', $setting->write_setting($token));
+            $this->assertTrue($setting->post_write_settings($previous));
+            $this->assertFalse($cache->get('cached-private-file'));
+            $stored = get_config('qtype_stack', $name);
+            $this->assertSame($token, $stored === '' ? '' : \core\encryption::decrypt($stored));
+        }
+        $setting = $settings->settings->qtype_stacklibraries;
+        $previous = $setting->get_setting();
+        $catalogue['bank']['name'] = 'Renamed bank';
+        $cache->set('cached-private-file', 'content');
+        $this->assertSame('', $setting->write_setting(json_encode($catalogue)));
+        $this->assertTrue($setting->post_write_settings($previous));
+        $this->assertFalse($cache->get('cached-private-file'));
+    }
+
+    /** The CI bootstrap includes ciphertext in PHPUnit's reset baseline. */
+    public function test_ci_credential_survives_resets(): void {
+        global $CFG;
+        $baseline = $CFG->forced_plugin_settings['qtype_stack']['githubtoken'] ?? '';
+        if ($baseline === '') {
+            $this->markTestSkipped('Run with the CI encrypted credential fixture to check reset persistence.');
+        }
+        $this->resetAfterTest();
+        $method = new \ReflectionMethod(\stack_question_library::class, 'github_headers');
+        $before = $method->invoke(null);
+        $this->assertCount(3, $before);
+        $this->assertTrue(\core\encryption::decrypt($baseline) !== $baseline);
+        for ($i = 0; $i < 2; $i++) {
+            unset($CFG->forced_plugin_settings['qtype_stack']['githubtoken']);
+            set_config('githubtoken', '', 'qtype_stack');
             $this->assertCount(2, $method->invoke(null));
-            putenv('STACK_GITHUB_TOKEN=ci-token');
-            $this->assertContains('Authorization: Bearer ci-token', $method->invoke(null));
-        } finally {
-            putenv($previous === false ? 'STACK_GITHUB_TOKEN' : 'STACK_GITHUB_TOKEN=' . $previous);
+            \phpunit_util::reset_all_data();
+            // Avoid including real credentials in assertion failure output.
+            $this->assertTrue($baseline === get_config('qtype_stack', 'githubtoken'));
+            $this->assertTrue($before === $method->invoke(null));
         }
     }
 

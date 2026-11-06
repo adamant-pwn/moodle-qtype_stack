@@ -2153,5 +2153,8 @@ $string['varmatrixaugmentedellipsis'] = 'The dots (...) stand for optional extra
 $string['varmatrixaugmentedrows'] = 'Choose the number of rows; keep block widths consistent.';
 $string['varmatrixaugmentedonerow'] = 'Use only one row.';
 
-$string['settinggithubtoken'] = 'GitHub library access token';
-$string['settinggithubtoken_desc'] = 'Optional shared personal access token for configured GitHub libraries. Use a fine-grained token with read-only Contents access to the intended repositories. Its access is shared with users allowed to use external libraries. Moodle encrypts the saved value; keep its encryption key available when restoring the site. Changing or removing this token clears the library cache. Preview image URLs do not currently require login, so this setting does not provide confidential image delivery. Command-line scripts use STACK_GITHUB_TOKEN instead.';
+$string['settinggithubtoken'] = 'Default GitHub library access token';
+$string['settinggithubtoken_desc'] = 'Optional shared personal access token for configured GitHub libraries. Use a fine-grained token with read-only Contents access to the intended repositories. Its access is shared with users allowed to use external libraries. Moodle encrypts the saved value; keep its encryption key available when restoring the site. Changing or removing this token clears the library cache. Preview image URLs do not currently require login, so this setting does not provide confidential image delivery. Used by both web requests and command-line scripts. Library-specific tokens take precedence; this token is tried if their access is rejected.';
+
+$string['settinggithublibrarytoken'] = 'GitHub access token: {$a}';
+$string['settinggithublibrarytoken_desc'] = 'Optional encrypted token for this library. Save the library catalogue first to show its token field. On an access failure, STACK tries the default token if configured. Rate limits and transport failures do not trigger fallback. Changing this token clears the library cache.';
