@@ -26,7 +26,6 @@ defined('MOODLE_INTERNAL') || die();
 global $CFG;
 require_once($CFG->dirroot . '/webservice/tests/helpers.php');
 
-
 /**
  * @runTestsInSeparateProcesses
  * @covers \qtype_stack\library_render
