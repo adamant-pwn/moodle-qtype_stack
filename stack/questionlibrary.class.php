@@ -371,7 +371,8 @@ class stack_question_library {
         if ($libraryid !== '') {
             $library = (json_decode(get_config('qtype_stack', 'libraries') ?: '{}', true) ?: [])[$libraryid] ?? null;
             if (!$library || $library['url'] !== $githuburl) {
-                throw new \stack_exception('Unknown GitHub library.');
+                throw new \stack_exception('The GitHub library settings have changed or the library is unavailable. ' .
+                    'Reload the library page and try again.');
             }
             $specific = self::github_token_setting($libraryid);
             if (get_config('qtype_stack', $specific)) {
@@ -583,7 +584,8 @@ class stack_question_library {
      */
     public static function get_external_github_file($requestedfile, array $credential = []) {
         if ($credential && !str_starts_with($requestedfile, $credential['repository'] . '/git/blobs/')) {
-            throw new \stack_exception('File does not belong to the GitHub library.');
+            throw new \stack_exception('The requested file is outside this GitHub library. ' .
+                'Reload the library page and select the file again.');
         }
         [$res, $httpcode, $details] = static::request_github($requestedfile, 0, $credential['setting'] ?? 'githubtoken');
         if ($res === false || $httpcode !== 200) {

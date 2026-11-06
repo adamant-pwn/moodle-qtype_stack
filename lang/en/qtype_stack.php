@@ -2153,8 +2153,10 @@ $string['varmatrixaugmentedellipsis'] = 'The dots (...) stand for optional extra
 $string['varmatrixaugmentedrows'] = 'Choose the number of rows; keep block widths consistent.';
 $string['varmatrixaugmentedonerow'] = 'Use only one row.';
 
-$string['settinggithubtoken'] = 'Default GitHub library access token';
-$string['settinggithubtoken_desc'] = 'Optional shared personal access token for configured GitHub libraries. Use a fine-grained token with read-only Contents access to the intended repositories. Its access is shared with users allowed to use external libraries. Moodle encrypts the saved value; keep its encryption key available when restoring the site. Changing or removing this token clears the library cache. Preview image URLs do not currently require login, so this setting does not provide confidential image delivery. Used by both web requests and command-line scripts. Library-specific tokens take precedence; this token is tried if their access is rejected.';
+$string['settinggithubtoken'] = 'Default GitHub access token';
+$string['settinggithubtoken_desc'] = '<p>Optional token for GitHub libraries that have no token of their own, or whose token is denied access. Leave blank to access public libraries without a default token. To add a token for one library, save its entry in the external library settings first.</p>
+<p>Use a fine-grained personal access token with read-only Contents permission for the repositories you want to share. Users allowed to use external libraries share this access. Anyone with a preview image URL can view that image without logging in.</p>
+<p>Moodle encrypts saved tokens. Include its encryption key in site backups.</p>';
 
-$string['settinggithublibrarytoken'] = 'GitHub access token: {$a}';
-$string['settinggithublibrarytoken_desc'] = 'Optional encrypted token for this library. Save the library catalogue first to show its token field. On an access failure, STACK tries the default token if configured. Rate limits and transport failures do not trigger fallback. Changing this token clears the library cache.';
+$string['settinggithublibrarytoken'] = 'GitHub access token for {$a}';
+$string['settinggithublibrarytoken_desc'] = 'Optional token to use first for this library. If GitHub denies access, STACK tries the default token once. Rate limits and connection errors do not trigger a retry with another token. Leave blank to use the default token.';

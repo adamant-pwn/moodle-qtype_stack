@@ -210,10 +210,10 @@ GitHub requests require HTTPS on `api.github.com`, port 443, without embedded cr
 Other URLs are rejected before any request; redirects are not followed.
 
 CI passes its temporary `contents: read` token to `tests/fixtures/setup_github_token.php` on stdin.
-The script uses Moodle's encrypted setting and writes only ciphertext into a private configuration
-bootstrap. It loads Moodle first, supplies `forced_plugin_settings`, then captures the reset baseline.
-The disposable encryption key lives outside PHPUnit's cleaned dataroot. The bootstrap and key are
-removed after PHPUnit.
+The script saves the token through Moodle's encrypted setting. It generates a PHPUnit bootstrap that
+loads the encrypted value through `forced_plugin_settings` after Moodle starts, then records it in
+PHPUnit's reset state. The encryption key is stored outside the directories PHPUnit clears. CI removes
+the generated bootstrap and key after the tests.
 Code executed by tests can decrypt the credential; use only the temporary CI token when testing
 contributions. STACK does not read a token from the environment.
 
