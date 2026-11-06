@@ -54,6 +54,27 @@ final class questionlibrary_github_test extends \basic_testcase {
     }
 
     /**
+     * A web entry point must ignore even a valid environment credential.
+     */
+    public function test_web_requests_ignore_environment_token(): void {
+        $script = 'define("MOODLE_INTERNAL", true); define("CLI_SCRIPT", false);'
+            . 'require ' . var_export(__DIR__ . '/../stack/questionlibrary.class.php', true) . ';'
+            . 'putenv("STACK_GITHUB_TOKEN=server-secret");'
+            . '$method = new \ReflectionMethod(\stack_question_library::class, "github_headers");'
+            . 'echo json_encode($method->invoke(null));';
+        $pipes = [];
+        $process = proc_open([PHP_BINARY, '-r', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertIsResource($process);
+        $output = stream_get_contents($pipes[1]);
+        $errors = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), $errors);
+        $this->assertSame(['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json'],
+            json_decode($output, true));
+    }
+
+    /**
      * Unsupported origins are rejected before executing any request, with or without a token.
      */
     public function test_invalid_urls_are_rejected(): void {

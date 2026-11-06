@@ -201,14 +201,14 @@ npm test
 ### GitHub API authentication
 
 External-library tests retrieve public files from GitHub. Set `STACK_GITHUB_TOKEN` in the PHP process
-environment to authenticate these requests. The token is optional and is also supported by live STACK
-installations. GitHub requests require an HTTPS URL on `api.github.com`, port 443, without embedded credentials.
+environment to authenticate these requests in command-line scripts (`CLI_SCRIPT`). The token is optional;
+web requests ignore it and continue to access public libraries anonymously. GitHub requests require an HTTPS
+URL on `api.github.com`, port 443, without embedded credentials.
 Other URLs are rejected before any request; redirects are not followed.
 
 GitHub Actions supplies its temporary token only to the PHPUnit step with `contents: read` permission.
 Code executed by that step can read the token, so do not substitute a production token or a personal
-token with broader access when testing contributions. Live installations should use their own token
-with only the permissions needed to read the intended repositories.
+token with broader access when testing contributions.
 
 Retrieval failures report the HTTP status, cURL error number and available numeric rate-limit headers.
 The external-library tests display listing errors before accessing the returned files.

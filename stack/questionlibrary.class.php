@@ -85,13 +85,14 @@ class stack_question_library {
     }
 
     /**
-     * Build headers for GitHub, optionally using STACK_GITHUB_TOKEN.
+     * Build headers for GitHub, using STACK_GITHUB_TOKEN only in command-line scripts.
      *
      * @return array HTTP headers
      */
     protected static function github_headers(): array {
         $headers = ['User-Agent: Moodle-STACK', 'Accept: application/vnd.github.v3+json'];
-        $token = getenv('STACK_GITHUB_TOKEN');
+        // Web requests must not inherit a server credential: library caches are shared between users.
+        $token = defined('CLI_SCRIPT') && CLI_SCRIPT ? getenv('STACK_GITHUB_TOKEN') : false;
         if ($token !== false && $token !== '' && !preg_match('/[\r\n]/', $token)) {
             $headers[] = 'Authorization: Bearer ' . $token;
         }
@@ -121,6 +122,7 @@ class stack_question_library {
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$diagnostics): int {
+                // Keep only numeric rate-limit values. Arbitrary headers may contain sensitive data.
                 if (
                     preg_match(
                         '/^(x-ratelimit-remaining|x-ratelimit-reset|retry-after):\s*([0-9]+)\s*$/i',
